@@ -2,15 +2,18 @@
   "name": "phobos-launcher",
   "version": "1.0.0",
   "description": "PHOBOS Core Launcher — Start, stop, and update your local AI engine",
-  "author": "Autarch Industries",
+  "author": {
+    "name": "Autarch Industries",
+    "email": "dev@autarch.net"
+  },
   "main": "main.js",
   "scripts": {
     "dev": "electron . --dev",
-    "build": "electron-builder",
-    "build:win": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "build:all": "gh workflow run build.yml"
+    "build": "electron-builder --publish never",
+    "build:win": "electron-builder --win --publish never",
+    "build:mac": "electron-builder --mac --publish never",
+    "build:linux": "electron-builder --linux --publish never",
+    "build:all": "node build.all.mjs"
   },
   "build": {
     "appId": "net.autarch.phobos-launcher",
