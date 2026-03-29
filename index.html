@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; script-src 'self' 'unsafe-inline';" />
+  <title>PHOBOS Launcher</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --green: #00ff00; --green-dim: #1a4a1a; --green-mid: #33cc33;
+      --amber: #ffaa00; --amber-dim: #4a3a1a;
+      --red: #ff3333; --red-dim: #4a1a1a;
+      --bg: #000000; --text: #cccccc; --text-dim: #666666;
+    }
+    html, body { width:100%; height:100%; overflow:hidden; background:var(--bg); color:var(--text); font-family:'Consolas','Courier New',monospace; user-select:none; }
+
+    /* Vortex canvas */
+    #vortex { position:fixed; inset:0; z-index:0; image-rendering:pixelated; }
+
+    /* Titlebar */
+    #titlebar { position:fixed; top:0; left:0; right:0; height:28px; display:flex; align-items:center; justify-content:flex-end; padding:0 10px; -webkit-app-region:drag; z-index:100; }
+    #win-controls { display:flex; gap:8px; -webkit-app-region:no-drag; }
+    #win-controls button { width:12px; height:12px; border-radius:50%; border:none; cursor:pointer; color:transparent; font-size:7px; transition:color .15s; }
+    #win-controls button:hover { color:rgba(0,0,0,0.6); }
+    #btn-min { background:#555; } #btn-close { background:#8B0000; }
+
+    /* Main layout */
+    #ui { position:fixed; inset:0; z-index:10; display:flex; flex-direction:column; align-items:center; padding:36px 30px 24px; }
+
+    /* Title */
+    #title { font-family:'Impact','Arial Black',sans-serif; font-size:36px; letter-spacing:6px; color:var(--green); text-shadow:0 0 20px rgba(0,255,0,0.3); margin-bottom:4px; }
+    #subtitle { font-size:10px; letter-spacing:3px; color:var(--text-dim); text-transform:uppercase; margin-bottom:16px; }
+
+    /* AI state image */
+    #ai-img { width:220px; height:220px; object-fit:contain; transition:opacity 0.5s; margin-bottom:12px; }
+
+    /* Status area */
+    #status-area { text-align:center; margin-bottom:16px; min-height:60px; }
+    #status-label { font-size:13px; letter-spacing:1px; margin-bottom:6px; transition:color 0.3s; }
+    #status-detail { font-size:10px; color:var(--text-dim); line-height:1.5; }
+
+    /* Progress bar */
+    #progress-wrap { width:280px; height:3px; background:rgba(255,255,255,0.06); margin-bottom:16px; display:none; }
+    #progress-wrap.on { display:block; }
+    #progress-bar { height:100%; width:0%; background:var(--green); transition:width 0.3s, background 0.3s; }
+
+    /* Action button */
+    #action-btn {
+      width:260px; padding:10px 0; border:1px solid var(--green-dim); background:transparent;
+      color:var(--green); font-family:inherit; font-size:12px; letter-spacing:3px;
+      text-transform:uppercase; cursor:pointer; transition:all 0.2s;
+    }
+    #action-btn:hover:not(:disabled) { background:rgba(0,255,0,0.06); border-color:var(--green); text-shadow:0 0 8px rgba(0,255,0,0.4); }
+    #action-btn:disabled { opacity:0.3; cursor:default; }
+    #action-btn.stop { color:var(--amber); border-color:var(--amber-dim); }
+    #action-btn.stop:hover { background:rgba(255,170,0,0.06); border-color:var(--amber); text-shadow:0 0 8px rgba(255,170,0,0.4); }
+    #action-btn.error { color:var(--red); border-color:var(--red-dim); }
+
+    /* Version + links */
+    #footer { margin-top:auto; text-align:center; padding-top:12px; }
+    #version-line { font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:8px; }
+    #links { display:flex; gap:16px; justify-content:center; }
+    #links a { font-size:9px; letter-spacing:1px; color:var(--green-dim); text-decoration:none; text-transform:uppercase; cursor:pointer; transition:color .2s; }
+    #links a:hover { color:var(--green); }
+  </style>
+</head>
+<body>
+
+<canvas id="vortex"></canvas>
+
+<div id="titlebar">
+  <div id="win-controls">
+    <button id="btn-min" onclick="launcher.minimize()"></button>
+    <button id="btn-close" onclick="launcher.close()"></button>
+  </div>
+</div>
+
+<div id="ui">
+  <div id="title">PHOBOS CORE</div>
+  <div id="subtitle">Autarch Industries</div>
+
+  <img id="ai-img" src="assets/ai-state-idle.png" />
+
+  <div id="status-area">
+    <div id="status-label">Initializing…</div>
+    <div id="status-detail"></div>
+  </div>
+
+  <div id="progress-wrap"><div id="progress-bar"></div></div>
+
+  <button id="action-btn" disabled>CHECKING…</button>
+
+  <div id="footer">
+    <div id="version-line">—</div>
+    <div id="links">
+      <a onclick="launcher.openUrl('https://discord.gg/mDDB2Kfafa')">Discord</a>
+      <a onclick="launcher.openUrl('https://autarch.net')">Website</a>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── State ───────────────────────────────────────────────────────────────────
+let currentState = 'checking';
+let coreRunning  = false;
+
+const $img     = document.getElementById('ai-img');
+const $label   = document.getElementById('status-label');
+const $detail  = document.getElementById('status-detail');
+const $progW   = document.getElementById('progress-wrap');
+const $progB   = document.getElementById('progress-bar');
+const $btn     = document.getElementById('action-btn');
+const $ver     = document.getElementById('version-line');
+
+const STATE_IMAGES = {
+  checking:    'assets/ai-state-idle.png',
+  ready:       'assets/ai-state-idle.png',
+  downloading: 'assets/ai-state-downloading.png',
+  extracting:  'assets/ai-state-downloading.png',
+  starting:    'assets/ai-state-downloading.png',
+  running:     'assets/ai-state-active.png',
+  stopped:     'assets/ai-state-idle.png',
+  error:       'assets/ai-state-error.png',
+  'no-install':'assets/ai-state-unavailable.png',
+};
+
+const STATE_COLORS = {
+  checking:    'var(--text-dim)',
+  ready:       'var(--green)',
+  downloading: 'var(--amber)',
+  extracting:  'var(--amber)',
+  starting:    'var(--amber)',
+  running:     'var(--green)',
+  stopped:     'var(--text-dim)',
+  error:       'var(--red)',
+  'no-install':'var(--red)',
+};
+
+// ─── IPC listeners ───────────────────────────────────────────────────────────
+launcher.onStatus((d) => {
+  currentState = d.state;
+  coreRunning  = d.state === 'running';
+
+  $img.src = STATE_IMAGES[d.state] || STATE_IMAGES.ready;
+  $label.style.color = STATE_COLORS[d.state] || 'var(--text)';
+  $label.textContent = d.message || d.state;
+
+  // Detail line
+  if (d.state === 'running') {
+    const parts = [];
+    if (d.coordinatorStatus === 'connected') parts.push('SAYON ●');
+    if (d.engineStatus === 'connected') parts.push('SEREN ●');
+    $detail.textContent = parts.length ? parts.join('   ') : 'Waiting for models…';
+  } else if (d.state === 'downloading' && d.speed) {
+    $detail.textContent = `${d.received || ''} / ${d.total || ''}  ·  ${d.speed || ''}  ·  ${d.eta || ''}`;
+  } else {
+    $detail.textContent = '';
+  }
+
+  // Progress bar
+  if (d.state === 'downloading' || d.state === 'extracting') {
+    $progW.classList.add('on');
+    $progB.style.width = (d.progress || 0) + '%';
+    $progB.style.background = 'var(--amber)';
+  } else {
+    $progW.classList.remove('on');
+  }
+
+  // Button
+  updateButton();
+
+  // Update vortex color target
+  updateVortexColor(d.state);
+});
+
+launcher.onVersion((d) => {
+  const v = d.local || d.remote || '—';
+  $ver.textContent = `v${v}`;
+});
+
+function updateButton() {
+  $btn.disabled = false;
+  $btn.className = '';
+
+  switch (currentState) {
+    case 'checking':
+    case 'extracting':
+      $btn.disabled = true;
+      $btn.textContent = currentState === 'checking' ? 'CHECKING…' : 'EXTRACTING…';
+      break;
+    case 'downloading':
+      $btn.disabled = true;
+      $btn.textContent = 'DOWNLOADING…';
+      break;
+    case 'ready':
+    case 'stopped':
+      $btn.textContent = 'START';
+      $btn.onclick = () => launcher.start();
+      break;
+    case 'starting':
+      $btn.disabled = true;
+      $btn.textContent = 'STARTING…';
+      break;
+    case 'running':
+      $btn.textContent = 'STOP';
+      $btn.className = 'stop';
+      $btn.onclick = () => launcher.stop();
+      break;
+    case 'error':
+      $btn.textContent = 'RETRY';
+      $btn.className = 'error';
+      $btn.onclick = () => launcher.checkUpdate();
+      break;
+    case 'no-install':
+      $btn.textContent = 'RETRY';
+      $btn.className = 'error';
+      $btn.onclick = () => launcher.checkUpdate();
+      break;
+  }
+}
+
+// ─── Vortex Background ──────────────────────────────────────────────────────
+// Ported from SpiritVortexBackground.tsx, recolored for PHOBOS
+const PIXEL_SIZE = 3;
+
+// Color palettes per state — vortex smoothly transitions between them
+const PALETTES = {
+  green: [
+    [10, 40, 15],  [15, 60, 20],  [25, 90, 30],  [40, 130, 50],
+    [60, 170, 70], [90, 200, 100],[130, 220, 140],[180, 240, 185],
+    [20, 70, 25],  [50, 150, 60],
+  ],
+  amber: [
+    [50, 35, 10],  [70, 50, 15],  [100, 70, 20], [140, 100, 30],
+    [180, 130, 40],[210, 160, 50],[230, 190, 80], [245, 220, 140],
+    [90, 60, 15],  [160, 115, 35],
+  ],
+  red: [
+    [50, 10, 10],  [70, 15, 15],  [100, 20, 20], [140, 30, 30],
+    [180, 40, 40], [210, 60, 50], [230, 90, 70], [245, 140, 120],
+    [90, 20, 15],  [160, 35, 30],
+  ],
+  dim: [
+    [15, 15, 15],  [25, 25, 25],  [35, 35, 35],  [50, 50, 50],
+    [65, 65, 65],  [80, 80, 80],  [100, 100, 100],[120, 120, 120],
+    [30, 30, 30],  [55, 55, 55],
+  ],
+};
+
+const STATE_PALETTE = {
+  checking: 'dim', ready: 'green', downloading: 'amber', extracting: 'amber',
+  starting: 'amber', running: 'green', stopped: 'dim', error: 'red', 'no-install': 'red',
+};
+
+let targetPalette = PALETTES.dim;
+let currentPalette = PALETTES.dim.map(c => [...c]);
+let glowColor = [15, 40, 15];
+let targetGlow = [15, 40, 15];
+
+const GLOW_COLORS = {
+  green: [30, 100, 40], amber: [100, 75, 20], red: [100, 25, 20], dim: [15, 15, 15],
+};
+
+function updateVortexColor(state) {
+  const key = STATE_PALETTE[state] || 'dim';
+  targetPalette = PALETTES[key];
+  targetGlow = GLOW_COLORS[key];
+}
+
+function lerpColor(current, target, t) {
+  return [
+    current[0] + (target[0] - current[0]) * t,
+    current[1] + (target[1] - current[1]) * t,
+    current[2] + (target[2] - current[2]) * t,
+  ];
+}
+
+// Particles
+const particles = [];
+const PARTICLE_COUNT = 180;
+
+function createParticle(cx, cy) {
+  const angle = Math.random() * Math.PI * 2;
+  const radius = 60 + Math.random() * Math.min(cx, cy) * 0.7;
+  return {
+    x: cx + Math.cos(angle) * radius,
+    y: cy + Math.sin(angle) * radius,
+    angle, radius,
+    speed: 0.08 + Math.random() * 0.22,
+    colorIdx: Math.floor(Math.random() * 10),
+    size: PIXEL_SIZE + Math.floor(Math.random() * 2) * PIXEL_SIZE,
+    life: 0, maxLife: 300 + Math.random() * 500,
+    drift: (Math.random() - 0.5) * 0.01,
+  };
+}
+
+const BAYER2 = [[0, 2], [3, 1]];
+function ditherAlpha(x, y, alpha) {
+  return alpha > BAYER2[y % 2][x % 2] / 4;
+}
+
+(function initVortex() {
+  const canvas = document.getElementById('vortex');
+  const ctx = canvas.getContext('2d', { alpha: false });
+  let w = 0, h = 0;
+
+  function resize() {
+    w = window.innerWidth; h = window.innerHeight;
+    canvas.width = Math.ceil(w / PIXEL_SIZE);
+    canvas.height = Math.ceil(h / PIXEL_SIZE);
+    canvas.style.width = w + 'px';
+    canvas.style.height = h + 'px';
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const cx = () => canvas.width / 2;
+  const cy = () => canvas.height / 2;
+
+  for (let i = 0; i < PARTICLE_COUNT; i++) {
+    particles.push(createParticle(cx() * PIXEL_SIZE, cy() * PIXEL_SIZE));
+  }
+
+  let time = 0;
+
+  function render() {
+    time += 0.016;
+    const cxV = canvas.width / 2, cyV = canvas.height / 2;
+    const cxW = cxV * PIXEL_SIZE, cyW = cyV * PIXEL_SIZE;
+
+    // Lerp palette colors toward target
+    for (let i = 0; i < currentPalette.length; i++) {
+      currentPalette[i] = lerpColor(currentPalette[i], targetPalette[i], 0.01);
+    }
+    glowColor = lerpColor(glowColor, targetGlow, 0.01);
+
+    const imgData = ctx.createImageData(canvas.width, canvas.height);
+    const data = imgData.data;
+
+    // Background — dark radial gradient
+    for (let py = 0; py < canvas.height; py++) {
+      for (let px = 0; px < canvas.width; px++) {
+        const dx = px - cxV, dy = py - cyV;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        const maxDist = Math.sqrt(cxV * cxV + cyV * cyV);
+        const t = Math.min(dist / maxDist, 1);
+        const idx = (py * canvas.width + px) * 4;
+        data[idx] = Math.floor(2 + (1 - t) * 6);
+        data[idx + 1] = Math.floor(2 + (1 - t) * 6);
+        data[idx + 2] = Math.floor(2 + (1 - t) * 6);
+        data[idx + 3] = 255;
+      }
+    }
+
+    // Particles
+    for (let i = 0; i < particles.length; i++) {
+      const p = particles[i];
+      p.life++;
+      p.angle += p.speed * 0.02 + p.drift;
+      p.radius -= p.speed * 0.3;
+
+      if (p.radius < 8 || p.life > p.maxLife) {
+        particles[i] = createParticle(cxW, cyW);
+        continue;
+      }
+
+      p.x = cxW + Math.cos(p.angle) * p.radius;
+      p.y = cyW + Math.sin(p.angle) * p.radius;
+
+      const px = Math.floor(p.x / PIXEL_SIZE);
+      const py = Math.floor(p.y / PIXEL_SIZE);
+      if (px < 0 || px >= canvas.width || py < 0 || py >= canvas.height) continue;
+
+      const lifeRatio = p.life / p.maxLife;
+      let alpha = 1;
+      if (lifeRatio < 0.1) alpha = lifeRatio / 0.1;
+      else if (lifeRatio > 0.8) alpha = (1 - lifeRatio) / 0.2;
+
+      const distRatio = p.radius / (Math.min(cxW, cyW) * 0.7);
+      const brightness = Math.max(0.3, 1 - distRatio * 0.6);
+
+      const color = currentPalette[p.colorIdx];
+      const pSize = Math.ceil(p.size / PIXEL_SIZE);
+
+      for (let dy = 0; dy < pSize; dy++) {
+        for (let dx = 0; dx < pSize; dx++) {
+          const drawX = px + dx, drawY = py + dy;
+          if (drawX >= canvas.width || drawY >= canvas.height) continue;
+          const isEdge = dx === 0 || dy === 0 || dx === pSize - 1 || dy === pSize - 1;
+          if (!ditherAlpha(drawX, drawY, isEdge ? alpha * 0.5 : alpha)) continue;
+          const idx = (drawY * canvas.width + drawX) * 4;
+          data[idx]     = Math.min(255, data[idx]     + Math.floor(color[0] * brightness));
+          data[idx + 1] = Math.min(255, data[idx + 1] + Math.floor(color[1] * brightness));
+          data[idx + 2] = Math.min(255, data[idx + 2] + Math.floor(color[2] * brightness));
+        }
+      }
+    }
+
+    // Central glow
+    const glowR = 30 + Math.sin(time * 0.5) * 6;
+    for (let py = Math.max(0, Math.floor(cyV - glowR)); py < Math.min(canvas.height, Math.ceil(cyV + glowR)); py++) {
+      for (let px = Math.max(0, Math.floor(cxV - glowR)); px < Math.min(canvas.width, Math.ceil(cxV + glowR)); px++) {
+        const dx = px - cxV, dy = py - cyV;
+        const dist = Math.sqrt(dx * dx + dy * dy);
+        if (dist > glowR) continue;
+        const intensity = (1 - dist / glowR) * 0.35;
+        if (!ditherAlpha(px, py, intensity)) continue;
+        const idx = (py * canvas.width + px) * 4;
+        data[idx]     = Math.min(255, data[idx]     + Math.floor(glowColor[0] * intensity));
+        data[idx + 1] = Math.min(255, data[idx + 1] + Math.floor(glowColor[1] * intensity));
+        data[idx + 2] = Math.min(255, data[idx + 2] + Math.floor(glowColor[2] * intensity));
+      }
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+    requestAnimationFrame(render);
+  }
+
+  requestAnimationFrame(render);
+})();
+</script>
+
+</body>
+</html>

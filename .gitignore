@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Downloaded game files
+*.zip
+*.7z
+*.tar.gz
+version.txt
+
+
+
+# Electron builder cache
+.cache/
+builder-debug.yml
+builder-effective-config.yaml
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.user

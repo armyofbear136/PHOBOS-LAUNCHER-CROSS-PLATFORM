@@ -1,0 +1,27 @@
+{
+  "name": "phobos-launcher",
+  "version": "1.0.0",
+  "description": "PHOBOS Core Launcher — Start, stop, and update your local AI engine",
+  "main": "main.js",
+  "scripts": {
+    "dev": "electron . --dev",
+    "build:win": "electron-builder --win",
+    "build:mac": "electron-builder --mac",
+    "build:linux": "electron-builder --linux"
+  },
+  "build": {
+    "appId": "net.autarch.phobos-launcher",
+    "productName": "PHOBOS Launcher",
+    "files": ["main.js", "config.js", "preload.js", "index.html", "assets/**/*"],
+    "win": { "target": "nsis", "icon": "assets/icon.ico" },
+    "mac": { "target": "dmg", "icon": "assets/icon.icns" },
+    "linux": { "target": ["AppImage", "deb"] }
+  },
+  "dependencies": {
+    "adm-zip": "^0.5.16"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}
