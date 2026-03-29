@@ -33,7 +33,7 @@ jobs:
 
           - label:    linux-arm64
             runner:   ubuntu-24.04-arm
-            cmd:      build:linux
+            cmd:      build:linux-arm
 
     steps:
       - uses: actions/checkout@v5
