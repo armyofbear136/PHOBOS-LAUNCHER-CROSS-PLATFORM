@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('launcher', {
   openUrl:   (url) => ipcRenderer.invoke('shell:openUrl', url),
   start:     () => ipcRenderer.invoke('core:start'),
   stop:      () => ipcRenderer.invoke('core:stop'),
+  download:  () => ipcRenderer.invoke('core:download'),
   checkUpdate: () => ipcRenderer.invoke('core:checkUpdate'),
 
   onStatus:  (cb) => { ipcRenderer.on('status', (_, d) => cb(d)); },

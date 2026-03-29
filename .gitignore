@@ -8,9 +8,10 @@ dist/
 *.zip
 *.7z
 *.tar.gz
-version.txt
+phobos-version.txt
 
-
+#PHOBOS app
+PHOBOS/
 
 # Electron builder cache
 .cache/

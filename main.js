@@ -33,8 +33,8 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  // Auto-check for updates on launch
-  setImmediate(() => checkAndReport());
+  // Check for updates on launch (no auto-download — user must click)
+  setImmediate(() => checkVersion());
 });
 
 app.on('window-all-closed', () => { stopCore(); stopPolling(); app.quit(); });
@@ -46,21 +46,23 @@ ipcMain.handle('window:minimize', () => mainWindow?.minimize());
 ipcMain.handle('shell:openUrl',   (_, url) => shell.openExternal(url));
 ipcMain.handle('core:start',      () => startCore());
 ipcMain.handle('core:stop',       () => { stopCore(); send('status', { state: 'stopped', message: 'Stopped' }); });
-ipcMain.handle('core:checkUpdate',() => checkAndReport());
+ipcMain.handle('core:checkUpdate',() => checkVersion());
+ipcMain.handle('core:download',   () => downloadAndInstall());
 
 function send(ch, data) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, data);
 }
 
-// ─── Update check ────────────────────────────────────────────────────────────
-async function checkAndReport() {
+// ─── Version check (no download — just reports state) ────────────────────────
+let _remoteVer = null;
+
+async function checkVersion() {
   send('status', { state: 'checking', message: 'Checking for updates…' });
 
   let localVer = null;
   try { localVer = fs.readFileSync(cfg.VERSION_FILE, 'utf8').trim(); } catch {}
 
-  let remoteVer = null;
-  try { remoteVer = (await fetchText(cfg.VERSION_URL)).trim(); } catch {
+  try { _remoteVer = (await fetchText(cfg.VERSION_URL)).trim(); } catch {
     // Offline
     if (fs.existsSync(cfg.CORE_BINARY)) {
       send('version', { local: localVer, remote: null });
@@ -71,15 +73,28 @@ async function checkAndReport() {
     return;
   }
 
-  send('version', { local: localVer, remote: remoteVer });
+  send('version', { local: localVer, remote: _remoteVer });
 
-  if (localVer === remoteVer && fs.existsSync(cfg.CORE_BINARY)) {
+  if (localVer === _remoteVer && fs.existsSync(cfg.CORE_BINARY)) {
     send('status', { state: 'ready', message: 'Up to date' });
     return;
   }
 
-  // Need download
-  const action = localVer ? 'Updating…' : 'Downloading…';
+  if (fs.existsSync(cfg.CORE_BINARY)) {
+    // Update available
+    send('status', { state: 'update-available', message: `Update available: v${_remoteVer}` });
+  } else {
+    // Fresh install needed
+    send('status', { state: 'needs-download', message: 'PHOBOS Core not installed' });
+  }
+}
+
+// ─── Download + install (user-triggered) ──────────────────────────────────────
+async function downloadAndInstall() {
+  const remoteVer = _remoteVer;
+  if (!remoteVer) { send('status', { state: 'error', message: 'No version info — check update first' }); return; }
+
+  const action = fs.existsSync(cfg.CORE_BINARY) ? 'Updating…' : 'Downloading…';
   send('status', { state: 'downloading', message: action, progress: 0 });
 
   try {
@@ -95,7 +110,6 @@ async function checkAndReport() {
     await extractArchive(cfg.ARCHIVE_PATH, cfg.CORE_DIR, cfg.ARCHIVE_TYPE);
     try { fs.unlinkSync(cfg.ARCHIVE_PATH); } catch {}
 
-    // chmod on unix
     if (process.platform !== 'win32' && fs.existsSync(cfg.CORE_BINARY)) {
       fs.chmodSync(cfg.CORE_BINARY, 0o755);
     }
@@ -179,7 +193,8 @@ function stopCore() {
 // ─── Status polling ──────────────────────────────────────────────────────────
 function startPolling() {
   stopPolling();
-  let startedAt = Date.now();
+  const startedAt = Date.now();
+  const STARTUP_TIMEOUT = 60000; // 60s — phobos-core can take a while to init
 
   polling = setInterval(async () => {
     try {
@@ -193,9 +208,17 @@ function startPolling() {
         engineStatus: data.engine || 'disconnected',
       });
     } catch {
-      // Still starting — phobos-core takes a few seconds to bind the port
-      if (Date.now() - startedAt < 30000) {
+      // Still starting — phobos-core takes time to bind the port
+      const elapsed = Date.now() - startedAt;
+      if (elapsed < STARTUP_TIMEOUT) {
         send('status', { state: 'starting', message: 'Starting PHOBOS Core…' });
+      } else if (coreProc) {
+        // Process is alive but not responding — keep trying but show warning
+        send('status', { state: 'starting', message: 'Waiting for PHOBOS Core to respond…' });
+      } else {
+        // Process died — stop polling
+        stopPolling();
+        send('status', { state: 'error', message: 'PHOBOS Core failed to start' });
       }
     }
   }, cfg.STATUS_POLL_MS);

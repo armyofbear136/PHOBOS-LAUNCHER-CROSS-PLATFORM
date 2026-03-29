@@ -39,8 +39,8 @@ exports.CORE_BINARY   = process.platform === 'win32'
 exports.LOG_FILE      = path.join(rootPath, 'PHOBOS', 'phobos.log');
 
 // ─── Status endpoint ─────────────────────────────────────────────────────────
-exports.CORE_PORT       = 52625;
-exports.STATUS_URL      = 'http://127.0.0.1:52625/api/status';
+exports.CORE_PORT       = 3001;
+exports.STATUS_URL      = 'http://127.0.0.1:3001/api/status';
 exports.STATUS_POLL_MS  = 3000;
 
 // ─── Links ───────────────────────────────────────────────────────────────────

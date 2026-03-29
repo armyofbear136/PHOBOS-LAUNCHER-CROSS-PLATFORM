@@ -39,6 +39,43 @@
     #status-label { font-size:13px; letter-spacing:1px; margin-bottom:6px; transition:color 0.3s; }
     #status-detail { font-size:10px; color:var(--text-dim); line-height:1.5; }
 
+    /* SAYON / SEREN status cards */
+    #persona-status { display:none; width:260px; margin-bottom:12px; }
+    #persona-status.on { display:flex; gap:10px; justify-content:center; }
+    .persona-card {
+      flex:1; padding:8px 10px; background:rgba(0,0,0,0.5); border:1px solid rgba(255,255,255,0.06);
+      display:flex; align-items:center; gap:8px;
+    }
+    .persona-dot {
+      width:8px; height:8px; border-radius:50%; flex-shrink:0;
+      background:var(--text-dim); transition:background 0.5s, box-shadow 0.5s;
+    }
+    .persona-dot.connected { background:var(--green); box-shadow:0 0 6px rgba(0,255,0,0.5); }
+    .persona-dot.loading { background:var(--amber); animation:pulse-dot 1.2s ease-in-out infinite; }
+    .persona-dot.off { background:var(--text-dim); }
+    @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.3;transform:scale(0.7)} }
+    .persona-name { font-size:11px; letter-spacing:2px; color:var(--text-dim); transition:color 0.3s; }
+    .persona-name.connected { color:var(--green); }
+    .persona-name.loading { color:var(--amber); }
+    .persona-sub { font-size:8px; color:var(--text-dim); letter-spacing:0.5px; margin-top:1px; }
+
+    /* Spinner ring (shown around dots when loading) */
+    .persona-spinner {
+      width:14px; height:14px; flex-shrink:0; position:relative;
+    }
+    .persona-spinner .dot-inner {
+      position:absolute; top:3px; left:3px; width:8px; height:8px; border-radius:50%;
+      background:var(--text-dim); transition:background 0.5s;
+    }
+    .persona-spinner .ring {
+      position:absolute; inset:0; border:1.5px solid transparent; border-radius:50%;
+      border-top-color:var(--amber); animation:spin 1s linear infinite; display:none;
+    }
+    .persona-spinner.loading .ring { display:block; }
+    .persona-spinner.loading .dot-inner { background:var(--amber); }
+    .persona-spinner.connected .dot-inner { background:var(--green); box-shadow:0 0 6px rgba(0,255,0,0.5); }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
     /* Progress bar */
     #progress-wrap { width:280px; height:3px; background:rgba(255,255,255,0.06); margin-bottom:16px; display:none; }
     #progress-wrap.on { display:block; }
@@ -86,6 +123,29 @@
     <div id="status-detail"></div>
   </div>
 
+  <div id="persona-status">
+    <div class="persona-card">
+      <div class="persona-spinner" id="sayon-spinner">
+        <div class="dot-inner"></div>
+        <div class="ring"></div>
+      </div>
+      <div>
+        <div class="persona-name" id="sayon-name">SAYON</div>
+        <div class="persona-sub" id="sayon-sub">coordinator</div>
+      </div>
+    </div>
+    <div class="persona-card">
+      <div class="persona-spinner" id="seren-spinner">
+        <div class="dot-inner"></div>
+        <div class="ring"></div>
+      </div>
+      <div>
+        <div class="persona-name" id="seren-name">SEREN</div>
+        <div class="persona-sub" id="seren-sub">reasoning</div>
+      </div>
+    </div>
+  </div>
+
   <div id="progress-wrap"><div id="progress-bar"></div></div>
 
   <button id="action-btn" disabled>CHECKING…</button>
@@ -93,7 +153,7 @@
   <div id="footer">
     <div id="version-line">—</div>
     <div id="links">
-      <a onclick="launcher.openUrl('https://discord.gg/mDDB2Kfafa')">Discord</a>
+      <a onclick="launcher.openUrl('https://discord.gg/F386uzxu8r')">Discord</a>
       <a onclick="launcher.openUrl('https://autarch.net')">Website</a>
     </div>
   </div>
@@ -111,29 +171,40 @@ const $progW   = document.getElementById('progress-wrap');
 const $progB   = document.getElementById('progress-bar');
 const $btn     = document.getElementById('action-btn');
 const $ver     = document.getElementById('version-line');
+const $persona = document.getElementById('persona-status');
+const $sayonSp = document.getElementById('sayon-spinner');
+const $serenSp = document.getElementById('seren-spinner');
+const $sayonNm = document.getElementById('sayon-name');
+const $serenNm = document.getElementById('seren-name');
+const $sayonSb = document.getElementById('sayon-sub');
+const $serenSb = document.getElementById('seren-sub');
 
 const STATE_IMAGES = {
-  checking:    'assets/ai-state-idle.png',
-  ready:       'assets/ai-state-idle.png',
-  downloading: 'assets/ai-state-downloading.png',
-  extracting:  'assets/ai-state-downloading.png',
-  starting:    'assets/ai-state-downloading.png',
-  running:     'assets/ai-state-active.png',
-  stopped:     'assets/ai-state-idle.png',
-  error:       'assets/ai-state-error.png',
-  'no-install':'assets/ai-state-unavailable.png',
+  checking:          'assets/ai-state-idle.png',
+  ready:             'assets/ai-state-idle.png',
+  'needs-download':  'assets/ai-state-unavailable.png',
+  'update-available':'assets/ai-state-idle.png',
+  downloading:       'assets/ai-state-downloading.png',
+  extracting:        'assets/ai-state-downloading.png',
+  starting:          'assets/ai-state-downloading.png',
+  running:           'assets/ai-state-active.png',
+  stopped:           'assets/ai-state-idle.png',
+  error:             'assets/ai-state-error.png',
+  'no-install':      'assets/ai-state-unavailable.png',
 };
 
 const STATE_COLORS = {
-  checking:    'var(--text-dim)',
-  ready:       'var(--green)',
-  downloading: 'var(--amber)',
-  extracting:  'var(--amber)',
-  starting:    'var(--amber)',
-  running:     'var(--green)',
-  stopped:     'var(--text-dim)',
-  error:       'var(--red)',
-  'no-install':'var(--red)',
+  checking:          'var(--text-dim)',
+  ready:             'var(--green)',
+  'needs-download':  'var(--amber)',
+  'update-available':'var(--amber)',
+  downloading:       'var(--amber)',
+  extracting:        'var(--amber)',
+  starting:          'var(--amber)',
+  running:           'var(--green)',
+  stopped:           'var(--text-dim)',
+  error:             'var(--red)',
+  'no-install':      'var(--red)',
 };
 
 // ─── IPC listeners ───────────────────────────────────────────────────────────
@@ -145,16 +216,29 @@ launcher.onStatus((d) => {
   $label.style.color = STATE_COLORS[d.state] || 'var(--text)';
   $label.textContent = d.message || d.state;
 
-  // Detail line
-  if (d.state === 'running') {
-    const parts = [];
-    if (d.coordinatorStatus === 'connected') parts.push('SAYON ●');
-    if (d.engineStatus === 'connected') parts.push('SEREN ●');
-    $detail.textContent = parts.length ? parts.join('   ') : 'Waiting for models…';
-  } else if (d.state === 'downloading' && d.speed) {
-    $detail.textContent = `${d.received || ''} / ${d.total || ''}  ·  ${d.speed || ''}  ·  ${d.eta || ''}`;
-  } else {
+  // Detail line + persona cards
+  if (d.state === 'running' || d.state === 'starting') {
+    $persona.classList.add('on');
     $detail.textContent = '';
+
+    const coordState = d.state === 'starting' ? 'loading'
+      : d.coordinatorStatus === 'connected' ? 'connected' : 'loading';
+    const engState = d.state === 'starting' ? 'loading'
+      : d.engineStatus === 'connected' ? 'connected' : 'loading';
+
+    $sayonSp.className = 'persona-spinner ' + coordState;
+    $serenSp.className = 'persona-spinner ' + engState;
+    $sayonNm.className = 'persona-name ' + coordState;
+    $serenNm.className = 'persona-name ' + engState;
+    $sayonSb.textContent = d.coordinator ? d.coordinator.split('/').pop() : 'coordinator';
+    $serenSb.textContent = d.engine ? d.engine.split('/').pop() : 'reasoning';
+  } else {
+    $persona.classList.remove('on');
+    if (d.state === 'downloading' && d.speed) {
+      $detail.textContent = `${d.received || ''} / ${d.total || ''}  ·  ${d.speed || ''}  ·  ${d.eta || ''}`;
+    } else {
+      $detail.textContent = '';
+    }
   }
 
   // Progress bar
@@ -192,6 +276,14 @@ function updateButton() {
       $btn.disabled = true;
       $btn.textContent = 'DOWNLOADING…';
       break;
+    case 'needs-download':
+      $btn.textContent = 'DOWNLOAD';
+      $btn.onclick = () => launcher.download();
+      break;
+    case 'update-available':
+      $btn.textContent = 'UPDATE';
+      $btn.onclick = () => launcher.download();
+      break;
     case 'ready':
     case 'stopped':
       $btn.textContent = 'START';
@@ -207,10 +299,6 @@ function updateButton() {
       $btn.onclick = () => launcher.stop();
       break;
     case 'error':
-      $btn.textContent = 'RETRY';
-      $btn.className = 'error';
-      $btn.onclick = () => launcher.checkUpdate();
-      break;
     case 'no-install':
       $btn.textContent = 'RETRY';
       $btn.className = 'error';
@@ -248,7 +336,8 @@ const PALETTES = {
 };
 
 const STATE_PALETTE = {
-  checking: 'dim', ready: 'green', downloading: 'amber', extracting: 'amber',
+  checking: 'dim', ready: 'green', 'needs-download': 'amber', 'update-available': 'amber',
+  downloading: 'amber', extracting: 'amber',
   starting: 'amber', running: 'green', stopped: 'dim', error: 'red', 'no-install': 'red',
 };
 
