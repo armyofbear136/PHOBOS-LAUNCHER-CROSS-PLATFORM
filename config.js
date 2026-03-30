@@ -1,8 +1,31 @@
 'use strict';
 
 const path = require('path');
+const os   = require('os');
 
-const rootPath    = process.env.PORTABLE_EXECUTABLE_DIR || process.cwd();
+// ─── Root path resolution ────────────────────────────────────────────────────
+// On Windows/Linux, process.cwd() or PORTABLE_EXECUTABLE_DIR is the launcher's directory.
+// On macOS, process.cwd() returns '/' (read-only root) when launched from Finder/Dock.
+// Use the directory containing the .app bundle so PHOBOS files live next to the launcher.
+// If running from a DMG (read-only mount), fall back to ~/Library/Application Support/.
+function resolveRootPath() {
+  if (process.env.PORTABLE_EXECUTABLE_DIR) return process.env.PORTABLE_EXECUTABLE_DIR;
+  if (process.platform === 'darwin') {
+    const execDir = path.dirname(process.execPath);
+    const appDir = execDir.replace(/\.app\/Contents\/.*$/, '.app');
+    const parentDir = path.dirname(appDir);
+    try {
+      const testFile = path.join(parentDir, '.write-test-' + process.pid);
+      require('fs').writeFileSync(testFile, '');
+      require('fs').unlinkSync(testFile);
+      return parentDir;
+    } catch {
+      return path.join(os.homedir(), 'Library', 'Application Support', 'PHOBOSLauncher');
+    }
+  }
+  return process.cwd();
+}
+const rootPath    = resolveRootPath();
 const platformKey = `${process.platform}-${process.arch}`;
 
 exports.ROOT_PATH = rootPath;
