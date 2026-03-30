@@ -127,24 +127,40 @@ async function extractArchive(archivePath, destDir, type) {
   fs.mkdirSync(destDir, { recursive: true });
 
   if (type === '7z') {
-    // Windows: use 7z.exe if available (bundled with many systems), fall back to PowerShell
+    // Windows: use 7z.exe if available, fall back to tar, then AdmZip
     try {
       await execFileP('7z', ['x', `-o${destDir}`, '-y', archivePath], { timeout: 300000 });
       return;
     } catch {}
-    // PowerShell fallback for .7z — Expand-Archive only works with .zip
-    // Use tar which supports 7z on modern Windows (Win10+)
     try {
       await execFileP('tar', ['xf', archivePath, '-C', destDir], { timeout: 300000 });
       return;
     } catch {}
-    // Last resort: AdmZip (only works if it's actually a zip despite the extension)
     const AdmZip = require('adm-zip');
     const zip = new AdmZip(archivePath);
     zip.extractAllTo(destDir, true);
   } else {
     // tar.gz on macOS/Linux
-    await execFileP('tar', ['xzf', archivePath, '-C', destDir], { timeout: 300000 });
+    try {
+      await execFileP('tar', ['xzf', archivePath, '-C', destDir], { timeout: 300000 });
+    } catch (err) {
+      console.error('[Launcher] tar extraction failed:', err.message);
+      throw new Error(`Extraction failed: ${err.message}`);
+    }
+  }
+
+  // macOS: chmod all executables in the extracted directory
+  if (process.platform !== 'win32') {
+    try {
+      const entries = fs.readdirSync(destDir);
+      for (const entry of entries) {
+        const full = path.join(destDir, entry);
+        const stat = fs.statSync(full);
+        if (stat.isFile() && !entry.includes('.')) {
+          fs.chmodSync(full, 0o755);
+        }
+      }
+    } catch {}
   }
 }
 
@@ -252,12 +268,16 @@ function fetchLocalJson(url) {
 
 function downloadFile(url, dest, onProgress) {
   return new Promise((resolve, reject) => {
-    const mod = url.startsWith('https') ? https : http;
     let lastBytes = 0, lastTime = Date.now();
+    let resolved = false;
+    const done = () => { if (!resolved) { resolved = true; resolve(); } };
+    const fail = (err) => { if (!resolved) { resolved = true; reject(err); } };
+
     const doGet = (u) => {
+      const mod = u.startsWith('https') ? https : http;
       mod.get(u, (res) => {
         if (res.statusCode === 301 || res.statusCode === 302) return doGet(res.headers.location);
-        if (res.statusCode !== 200) return reject(new Error(`HTTP ${res.statusCode}`));
+        if (res.statusCode !== 200) return fail(new Error(`HTTP ${res.statusCode}`));
         const total = parseInt(res.headers['content-length'] || '0', 10);
         let received = 0;
         const out = fs.createWriteStream(dest);
@@ -273,9 +293,11 @@ function downloadFile(url, dest, onProgress) {
           }
         });
         res.pipe(out);
-        out.on('finish', resolve);
-        out.on('error', reject);
-      }).on('error', reject);
+        out.on('finish', done);
+        out.on('close', done);   // safety — macOS sometimes fires close but not finish
+        out.on('error', fail);
+        res.on('error', fail);
+      }).on('error', fail);
     };
     doGet(url);
   });
