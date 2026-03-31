@@ -11,17 +11,7 @@ const os   = require('os');
 function resolveRootPath() {
   if (process.env.PORTABLE_EXECUTABLE_DIR) return process.env.PORTABLE_EXECUTABLE_DIR;
   if (process.platform === 'darwin') {
-    const execDir = path.dirname(process.execPath);
-    const appDir = execDir.replace(/\.app\/Contents\/.*$/, '.app');
-    const parentDir = path.dirname(appDir);
-    try {
-      const testFile = path.join(parentDir, '.write-test-' + process.pid);
-      require('fs').writeFileSync(testFile, '');
-      require('fs').unlinkSync(testFile);
-      return parentDir;
-    } catch {
-      return path.join(os.homedir(), 'Library', 'Application Support', 'PHOBOSLauncher');
-    }
+    return path.join(os.homedir(), 'Library', 'Application Support', 'PHOBOSLauncher');
   }
   return process.cwd();
 }
