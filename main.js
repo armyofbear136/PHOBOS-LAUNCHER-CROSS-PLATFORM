@@ -98,6 +98,7 @@ async function downloadAndInstall() {
   send('status', { state: 'downloading', message: action, progress: 0 });
 
   try {
+    fs.mkdirSync(path.dirname(cfg.ARCHIVE_PATH), { recursive: true });
     await downloadFile(cfg.DOWNLOAD_URL, cfg.ARCHIVE_PATH, (pct, received, total, speed, eta) => {
       send('status', {
         state: 'downloading', message: action, progress: pct,
