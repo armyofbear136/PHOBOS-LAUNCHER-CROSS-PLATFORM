@@ -90,15 +90,64 @@ async function checkVersion() {
 }
 
 // ─── Download + install (user-triggered) ──────────────────────────────────────
+// ─── Extract ─────────────────────────────────────────────────────────────────
+async function extractArchive(archivePath, destDir, type) {
+  fs.mkdirSync(destDir, { recursive: true });
+
+  if (type === 'zip') {
+    if (process.platform === 'win32') {
+      await execFileP('powershell', [
+        '-NoProfile', '-Command',
+        `Expand-Archive -Force -LiteralPath '${archivePath}' -DestinationPath '${destDir}'`,
+      ], { timeout: 300_000 });
+    } else {
+      await execFileP('unzip', ['-o', '-q', archivePath, '-d', destDir], { timeout: 300_000 });
+    }
+  } else {
+    try {
+      await execFileP('tar', ['xzf', archivePath, '-C', destDir], { timeout: 300_000 });
+    } catch (err) {
+      throw new Error(`Extraction failed: ${err.message}`);
+    }
+  }
+
+  // macOS/Linux: chmod all executables recursively
+  if (process.platform !== 'win32') {
+    try {
+      const chmodAll = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+          const full = path.join(dir, entry.name);
+          if (entry.isDirectory()) { chmodAll(full); continue; }
+          if (!entry.name.includes('.') || entry.name.endsWith('.so')) {
+            try { fs.chmodSync(full, 0o755); } catch {}
+          }
+        }
+      };
+      chmodAll(destDir);
+    } catch {}
+  }
+}
+
+// ─── Download + install (user-triggered) ──────────────────────────────────────
+// On UPDATE: wipes CORE_DIR (except the log) then extracts the new archive.
+// DepPrep's marker and all installed services live in ~/.phobos/ which is
+// entirely outside CORE_DIR, so a full CORE_DIR wipe is always safe.
+// The dep-prep marker is keyed to the PHOBOS-DEPS release tag, not the core
+// version — deps only re-download when the DEPS release tag itself changes.
 async function downloadAndInstall() {
   const remoteVer = _remoteVer;
-  if (!remoteVer) { send('status', { state: 'error', message: 'No version info — check update first' }); return; }
+  if (!remoteVer) {
+    send('status', { state: 'error', message: 'No version info — check update first' });
+    return;
+  }
 
-  const action = fs.existsSync(cfg.CORE_BINARY) ? 'Updating…' : 'Downloading…';
+  const isUpdate = fs.existsSync(cfg.CORE_BINARY);
+  const action   = isUpdate ? 'Updating…' : 'Downloading…';
   send('status', { state: 'downloading', message: action, progress: 0 });
 
   try {
     fs.mkdirSync(path.dirname(cfg.ARCHIVE_PATH), { recursive: true });
+
     await downloadFile(cfg.DOWNLOAD_URL, cfg.ARCHIVE_PATH, (pct, received, total, speed, eta) => {
       send('status', {
         state: 'downloading', message: action, progress: pct,
@@ -108,6 +157,17 @@ async function downloadAndInstall() {
     });
 
     send('status', { state: 'extracting', message: 'Extracting…' });
+
+    if (isUpdate) {
+      // Preserve the log file; wipe everything else so stale binaries and DLLs
+      // from the old build don't linger alongside the new extraction.
+      let logBackup = null;
+      if (fs.existsSync(cfg.LOG_FILE)) logBackup = fs.readFileSync(cfg.LOG_FILE);
+      if (fs.existsSync(cfg.CORE_DIR))  fs.rmSync(cfg.CORE_DIR, { recursive: true, force: true });
+      fs.mkdirSync(cfg.CORE_DIR, { recursive: true });
+      if (logBackup !== null) fs.writeFileSync(cfg.LOG_FILE, logBackup);
+    }
+
     await extractArchive(cfg.ARCHIVE_PATH, cfg.CORE_DIR, cfg.ARCHIVE_TYPE);
     try { fs.unlinkSync(cfg.ARCHIVE_PATH); } catch {}
 
@@ -117,51 +177,9 @@ async function downloadAndInstall() {
 
     fs.writeFileSync(cfg.VERSION_FILE, remoteVer, 'utf8');
     send('version', { local: remoteVer, remote: remoteVer });
-    send('status', { state: 'ready', message: 'Ready' });
+    send('status', { state: 'ready', message: isUpdate ? 'Updated — ready to launch' : 'Ready' });
   } catch (err) {
     send('status', { state: 'error', message: err.message });
-  }
-}
-
-// ─── Extract ─────────────────────────────────────────────────────────────────
-async function extractArchive(archivePath, destDir, type) {
-  fs.mkdirSync(destDir, { recursive: true });
-
-  if (type === '7z') {
-    // Windows: use 7z.exe if available, fall back to tar, then AdmZip
-    try {
-      await execFileP('7z', ['x', `-o${destDir}`, '-y', archivePath], { timeout: 300000 });
-      return;
-    } catch {}
-    try {
-      await execFileP('tar', ['xf', archivePath, '-C', destDir], { timeout: 300000 });
-      return;
-    } catch {}
-    const AdmZip = require('adm-zip');
-    const zip = new AdmZip(archivePath);
-    zip.extractAllTo(destDir, true);
-  } else {
-    // tar.gz on macOS/Linux
-    try {
-      await execFileP('tar', ['xzf', archivePath, '-C', destDir], { timeout: 300000 });
-    } catch (err) {
-      console.error('[Launcher] tar extraction failed:', err.message);
-      throw new Error(`Extraction failed: ${err.message}`);
-    }
-  }
-
-  // macOS: chmod all executables in the extracted directory
-  if (process.platform !== 'win32') {
-    try {
-      const entries = fs.readdirSync(destDir);
-      for (const entry of entries) {
-        const full = path.join(destDir, entry);
-        const stat = fs.statSync(full);
-        if (stat.isFile() && !entry.includes('.')) {
-          fs.chmodSync(full, 0o755);
-        }
-      }
-    } catch {}
   }
 }
 

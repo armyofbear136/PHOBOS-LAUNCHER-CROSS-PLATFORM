@@ -28,7 +28,7 @@ const RELEASE_BASE = `https://github.com/armyofbear136/PHOBOS-BUILDS/releases/do
 
 // Platform → archive name mapping (matches build:full output)
 const ARCHIVE_MAP = {
-  'win32-x64':    { name: 'phobos-win32-x64.7z',            pack: '7z'  },
+  'win32-x64':    { name: 'phobos-win32-x64.zip',            pack: 'zip' },
   'darwin-arm64':  { name: 'phobos-darwin-arm64.tar.gz',     pack: 'tar' },
   'darwin-x64':    { name: 'phobos-darwin-x64.tar.gz',       pack: 'tar' },
   'linux-x64':     { name: 'phobos-linux-x64.tar.gz',       pack: 'tar' },
