@@ -116,9 +116,9 @@
     }
     #open-app-btn:hover { background:rgba(0,255,0,0.04); border-color:#33aa33; color:var(--green); text-shadow:0 0 8px rgba(0,255,0,0.3); }
 
-    /* Auto-open checkbox */
-    #auto-open-row {
-      display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer;
+    /* Auto-open / auto-start checkboxes */
+    #auto-open-row, #auto-start-row {
+      display:flex; align-items:center; gap:8px; margin-top:8px; cursor:pointer;
     }
     #auto-open-check {
       appearance:none; width:11px; height:11px; border:1px solid var(--green-dim);
@@ -200,6 +200,11 @@
     <span id="auto-open-label">Auto-open interface on launch</span>
   </label>
 
+  <label id="auto-start-row">
+    <input type="checkbox" id="auto-start-check" />
+    <span id="auto-open-label">Auto-start core on launch</span>
+  </label>
+
   <div id="footer">
     <div id="version-line">—</div>
     <div id="links">
@@ -232,14 +237,23 @@ const $serenSb = document.getElementById('seren-sub');
 const $launcherBanner = document.getElementById('launcher-update-banner');
 const $launcherLink   = document.getElementById('launcher-update-link');
 const $autoCheck      = document.getElementById('auto-open-check');
+const $autoStartCheck = document.getElementById('auto-start-check');
 
-// ─── Load persisted auto-open pref ──────────────────────────────────────────
+// ─── Load persisted prefs ────────────────────────────────────────────────────
+// autoOpenApp  — default ON  (null → true)
+// autoStartCore — default OFF (null → false)
 launcher.getPref('autoOpenApp').then(val => {
-  $autoCheck.checked = val === true || val === null; // default ON
+  $autoCheck.checked = val !== false;
+});
+launcher.getPref('autoStartCore').then(val => {
+  $autoStartCheck.checked = val === true;
 });
 
 $autoCheck.addEventListener('change', () => {
   launcher.setPref('autoOpenApp', $autoCheck.checked);
+});
+$autoStartCheck.addEventListener('change', () => {
+  launcher.setPref('autoStartCore', $autoStartCheck.checked);
 });
 
 const STATE_IMAGES = {
@@ -332,13 +346,7 @@ launcher.onLauncherUpdate((d) => {
 });
 
 launcher.onAppMissing(() => {
-  $openApp.disabled = false; // keep it clickable so user gets the error
   $openApp.textContent = 'APP NOT FOUND';
-});
-
-// Auto-open: fires once when core first reaches running state
-launcher.onFirstRunning(() => {
-  if ($autoCheck.checked) launcher.focusApp();
 });
 
 // Open app button — always enabled; single-instance lock handles focus vs fresh launch

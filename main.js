@@ -13,7 +13,6 @@ let mainWindow = null;
 let coreProc   = null;
 let polling    = null;
 let appPid     = null;   // PID of the launched PHOBOS electron app (unmanaged)
-let _everRunning = false; // true after core reaches running state for the first time
 
 // ─── Prefs (simple JSON, stored in userData) ──────────────────────────────────
 function prefsPath() {
@@ -51,6 +50,13 @@ app.whenReady().then(() => {
   createWindow();
   // Check for phobos-core updates and launcher self-updates on launch
   setImmediate(() => { checkVersion(); checkLauncherVersion(); });
+
+  // Auto-start core if pref is enabled (off by default)
+  // Delay slightly so the window has time to render before status events fire
+  const prefs = loadPrefs();
+  if (prefs.autoStartCore === true && fs.existsSync(cfg.CORE_BINARY)) {
+    setTimeout(() => startCore(), 600);
+  }
 });
 
 app.on('window-all-closed', () => { stopCore(); stopPolling(); app.quit(); });
@@ -240,6 +246,12 @@ function startCore() {
 
   send('status', { state: 'starting', message: 'Starting PHOBOS Core…' });
 
+  // Launch the PHOBOS app immediately when core starts — it will connect
+  // once core finishes booting. Only fires if autoOpenApp pref is enabled.
+  if (loadPrefs().autoOpenApp !== false) {
+    launchApp();
+  }
+
   // Pipe stdout/stderr to log file
   const logStream = fs.createWriteStream(cfg.LOG_FILE, { flags: 'a' });
 
@@ -269,7 +281,6 @@ function stopCore() {
   if (!coreProc) return;
   try { coreProc.kill('SIGTERM'); } catch {}
   coreProc = null;
-  _everRunning = false;
   stopPolling();
 }
 
@@ -324,12 +335,6 @@ function startPolling() {
         coordinatorStatus: data.coordinator || 'disconnected',
         engineStatus: data.engine || 'disconnected',
       });
-
-      // Fire once so the renderer can trigger auto-open without polling state
-      if (!_everRunning) {
-        _everRunning = true;
-        send('core:first-running');
-      }
     } catch {
       // Still starting — phobos-core takes time to bind the port
       const elapsed = Date.now() - startedAt;

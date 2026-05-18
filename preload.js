@@ -14,9 +14,8 @@ contextBridge.exposeInMainWorld('launcher', {
   getPref:     (key)        => ipcRenderer.invoke('prefs:get', key),
   setPref:     (key, value) => ipcRenderer.invoke('prefs:set', key, value),
 
-  onStatus:         (cb) => { ipcRenderer.on('status',            (_, d) => cb(d)); },
-  onVersion:        (cb) => { ipcRenderer.on('version',           (_, d) => cb(d)); },
-  onLauncherUpdate: (cb) => { ipcRenderer.on('launcher-update',   (_, d) => cb(d)); },
-  onAppMissing:     (cb) => { ipcRenderer.on('app-missing',       (_, d) => cb(d)); },
-  onFirstRunning:   (cb) => { ipcRenderer.on('core:first-running', ()    => cb()); },
+  onStatus:         (cb) => { ipcRenderer.on('status',          (_, d) => cb(d)); },
+  onVersion:        (cb) => { ipcRenderer.on('version',         (_, d) => cb(d)); },
+  onLauncherUpdate: (cb) => { ipcRenderer.on('launcher-update', (_, d) => cb(d)); },
+  onAppMissing:     (cb) => { ipcRenderer.on('app-missing',     (_, d) => cb(d)); },
 });
