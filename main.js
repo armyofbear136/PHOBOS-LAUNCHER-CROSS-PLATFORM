@@ -12,6 +12,7 @@ const cfg = require('./config');
 let mainWindow = null;
 let coreProc   = null;
 let polling    = null;
+let appPid     = null;   // PID of the launched PHOBOS electron app (unmanaged)
 
 const isDev = process.argv.includes('--dev');
 
@@ -33,8 +34,8 @@ function createWindow() {
 
 app.whenReady().then(() => {
   createWindow();
-  // Check for updates on launch (no auto-download — user must click)
-  setImmediate(() => checkVersion());
+  // Check for phobos-core updates and launcher self-updates on launch
+  setImmediate(() => { checkVersion(); checkLauncherVersion(); });
 });
 
 app.on('window-all-closed', () => { stopCore(); stopPolling(); app.quit(); });
@@ -48,6 +49,17 @@ ipcMain.handle('core:start',      () => startCore());
 ipcMain.handle('core:stop',       () => { stopCore(); send('status', { state: 'stopped', message: 'Stopped' }); });
 ipcMain.handle('core:checkUpdate',() => checkVersion());
 ipcMain.handle('core:download',   () => downloadAndInstall());
+
+// ─── PHOBOS app launch / focus ────────────────────────────────────────────────
+ipcMain.handle('app:launch', () => launchApp());
+ipcMain.handle('app:focus',  () => {
+  // If a known PID is alive, re-execute the binary — electron's single-instance
+  // lock inside the app will forward focus to the existing window and the new
+  // process exits immediately. If the PID is gone, launch fresh.
+  const alive = appPid != null && isPidAlive(appPid);
+  launchApp();   // always: single-instance lock handles the focus case
+  return alive;
+});
 
 function send(ch, data) {
   if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ch, data);
@@ -87,6 +99,40 @@ async function checkVersion() {
     // Fresh install needed
     send('status', { state: 'needs-download', message: 'PHOBOS Core not installed' });
   }
+}
+
+// ─── Launcher self-update check ───────────────────────────────────────────────
+async function checkLauncherVersion() {
+  try {
+    const remote = (await fetchText(cfg.LAUNCHER_VERSION_URL)).trim();
+    const local  = app.getVersion();
+    if (remote && remote !== local) {
+      send('launcher-update', { local, remote, downloadsUrl: cfg.LAUNCHER_DOWNLOADS_URL });
+    }
+  } catch {
+    // Offline or fetch failed — silently ignore, launcher still works fine
+  }
+}
+
+// ─── PHOBOS app launch (fire-and-forget, unmanaged) ──────────────────────────
+function launchApp() {
+  if (!fs.existsSync(cfg.APP_BINARY)) {
+    send('app-missing', { path: cfg.APP_BINARY });
+    return;
+  }
+  // Detach completely — the app is independent of the launcher and stays open
+  // regardless of launcher state. No stdin/stdout pipes; no exit handler.
+  const child = spawn(cfg.APP_BINARY, [], {
+    detached: true,
+    stdio:    'ignore',
+    cwd:      path.dirname(cfg.APP_BINARY),
+  });
+  appPid = child.pid;
+  child.unref();
+}
+
+function isPidAlive(pid) {
+  try { process.kill(pid, 0); return true; } catch { return false; }
 }
 
 // ─── Download + install (user-triggered) ──────────────────────────────────────

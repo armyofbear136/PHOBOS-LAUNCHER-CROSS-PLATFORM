@@ -93,7 +93,32 @@
     #action-btn.stop:hover { background:rgba(255,170,0,0.06); border-color:var(--amber); text-shadow:0 0 8px rgba(255,170,0,0.4); }
     #action-btn.error { color:var(--red); border-color:var(--red-dim); }
 
-    /* Version + links */
+    /* Launcher self-update banner */
+    #launcher-update-banner {
+      display:none; width:260px; padding:8px 12px; margin-bottom:10px;
+      background:rgba(255,170,0,0.08); border:1px solid var(--amber-dim);
+      text-align:center;
+    }
+    #launcher-update-banner.on { display:block; }
+    #launcher-update-banner p { font-size:9px; color:var(--amber); letter-spacing:1px; line-height:1.6; }
+    #launcher-update-banner a {
+      color:var(--amber); text-decoration:underline; cursor:pointer;
+      letter-spacing:1px; font-size:9px;
+    }
+    #launcher-update-banner a:hover { color:#ffd060; }
+
+    /* Open app button */
+    #open-app-btn {
+      width:260px; padding:10px 0; margin-top:8px;
+      border:1px solid #1a3a1a; background:transparent;
+      color:#339933; font-family:inherit; font-size:11px; letter-spacing:3px;
+      text-transform:uppercase; cursor:pointer; transition:all 0.2s;
+    }
+    #open-app-btn:hover:not(:disabled) {
+      background:rgba(0,255,0,0.04); border-color:#33aa33;
+      color:var(--green); text-shadow:0 0 8px rgba(0,255,0,0.3);
+    }
+    #open-app-btn:disabled { opacity:0.2; cursor:default; }
     #footer { margin-top:auto; text-align:center; padding-top:12px; }
     #version-line { font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:8px; }
     #links { display:flex; gap:16px; justify-content:center; }
@@ -148,7 +173,14 @@
 
   <div id="progress-wrap"><div id="progress-bar"></div></div>
 
+  <div id="launcher-update-banner">
+    <p>LAUNCHER UPDATE AVAILABLE<br>
+    <a id="launcher-update-link" onclick="">Download latest version →</a></p>
+  </div>
+
   <button id="action-btn" disabled>CHECKING…</button>
+
+  <button id="open-app-btn" disabled>OPEN PHOBOS INTERFACE</button>
 
   <div id="footer">
     <div id="version-line">—</div>
@@ -170,6 +202,7 @@ const $detail  = document.getElementById('status-detail');
 const $progW   = document.getElementById('progress-wrap');
 const $progB   = document.getElementById('progress-bar');
 const $btn     = document.getElementById('action-btn');
+const $openApp = document.getElementById('open-app-btn');
 const $ver     = document.getElementById('version-line');
 const $persona = document.getElementById('persona-status');
 const $sayonSp = document.getElementById('sayon-spinner');
@@ -178,6 +211,8 @@ const $sayonNm = document.getElementById('sayon-name');
 const $serenNm = document.getElementById('seren-name');
 const $sayonSb = document.getElementById('sayon-sub');
 const $serenSb = document.getElementById('seren-sub');
+const $launcherBanner = document.getElementById('launcher-update-banner');
+const $launcherLink   = document.getElementById('launcher-update-link');
 
 const STATE_IMAGES = {
   checking:          'assets/ai-state-idle.png',
@@ -262,7 +297,26 @@ launcher.onVersion((d) => {
   $ver.textContent = `v${v}`;
 });
 
+launcher.onLauncherUpdate((d) => {
+  $launcherBanner.classList.add('on');
+  $launcherLink.textContent = `Download v${d.remote} →`;
+  $launcherLink.onclick = () => launcher.openUrl(d.downloadsUrl);
+});
+
+launcher.onAppMissing(() => {
+  // App binary not found — disable the open button and show a hint
+  $openApp.disabled = true;
+  $openApp.textContent = 'APP NOT FOUND';
+});
+
+// Open app button — enabled only when core is running (app needs the backend)
+$openApp.onclick = () => launcher.focusApp();
+
 function updateButton() {
+  // Open Phobos Interface button — enabled only while core is running
+  $openApp.disabled = (currentState !== 'running');
+  $openApp.textContent = 'OPEN PHOBOS INTERFACE';
+
   $btn.disabled = false;
   $btn.className = '';
 

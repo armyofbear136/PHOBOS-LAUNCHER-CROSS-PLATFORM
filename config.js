@@ -56,6 +56,30 @@ exports.CORE_PORT       = 3001;
 exports.STATUS_URL      = 'http://127.0.0.1:3001/api/status';
 exports.STATUS_POLL_MS  = 3000;
 
+// ─── Launcher self-update config ─────────────────────────────────────────────
+// The launcher checks its own version.txt on the stable releases branch.
+// No auto-download — it opens the releases page so the user can grab the
+// correct platform build manually.
+const LAUNCHER_RELEASE_BASE = 'https://github.com/armyofbear136/PHOBOS-LAUNCHER-CROSS-PLATFORM/releases/download/PHOBOS-LAUNCHER-STABLE-RELEASES';
+exports.LAUNCHER_VERSION_URL   = `${LAUNCHER_RELEASE_BASE}/version.txt`;
+exports.LAUNCHER_DOWNLOADS_URL = 'https://github.com/armyofbear136/PHOBOS-LAUNCHER-CROSS-PLATFORM/releases/latest';
+
+// ─── PHOBOS app binary (electron app shipped alongside phobos-core) ───────────
+// On Windows: PHOBOS-app-win-x64.exe sits directly in CORE_DIR (dist/).
+// On macOS/Linux: equivalent AppImage/DMG lives in the same dir.
+const APP_BINARY_MAP = {
+  'win32-x64':   'PHOBOS-app-win-x64.exe',
+  'win32-arm64': 'PHOBOS-app-win-x64.exe',   // no arm64 build yet — fallback
+  'darwin-arm64': `PHOBOS-app-macOS-arm64.dmg`,
+  'darwin-x64':   `PHOBOS-app-macOS-x64.dmg`,
+  'linux-x64':    `PHOBOS-app-linux-x64.AppImage`,
+  'linux-arm64':  `PHOBOS-app-linux-arm64.AppImage`,
+};
+exports.APP_BINARY = path.join(
+  rootPath, 'PHOBOS',
+  APP_BINARY_MAP[platformKey] || 'PHOBOS-app-win-x64.exe'
+);
+
 // ─── Links ───────────────────────────────────────────────────────────────────
 exports.DISCORD_URL = 'https://discord.gg/mDDB2Kfafa';
 exports.WEBSITE_URL = 'https://autarch.net';
