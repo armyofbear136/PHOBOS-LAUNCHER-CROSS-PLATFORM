@@ -114,11 +114,24 @@
       color:#339933; font-family:inherit; font-size:11px; letter-spacing:3px;
       text-transform:uppercase; cursor:pointer; transition:all 0.2s;
     }
-    #open-app-btn:hover:not(:disabled) {
-      background:rgba(0,255,0,0.04); border-color:#33aa33;
-      color:var(--green); text-shadow:0 0 8px rgba(0,255,0,0.3);
+    #open-app-btn:hover { background:rgba(0,255,0,0.04); border-color:#33aa33; color:var(--green); text-shadow:0 0 8px rgba(0,255,0,0.3); }
+
+    /* Auto-open checkbox */
+    #auto-open-row {
+      display:flex; align-items:center; gap:8px; margin-top:10px; cursor:pointer;
     }
-    #open-app-btn:disabled { opacity:0.2; cursor:default; }
+    #auto-open-check {
+      appearance:none; width:11px; height:11px; border:1px solid var(--green-dim);
+      background:transparent; cursor:pointer; flex-shrink:0; position:relative;
+      transition:border-color .2s;
+    }
+    #auto-open-check:checked { border-color:var(--green); background:var(--green); }
+    #auto-open-check:checked::after {
+      content:''; position:absolute; top:1px; left:2px;
+      width:5px; height:3px; border-left:1.5px solid #000; border-bottom:1.5px solid #000;
+      transform:rotate(-45deg);
+    }
+    #auto-open-label { font-size:9px; letter-spacing:1px; color:var(--text-dim); text-transform:uppercase; user-select:none; }
     #footer { margin-top:auto; text-align:center; padding-top:12px; }
     #version-line { font-size:9px; color:var(--text-dim); letter-spacing:1px; margin-bottom:8px; }
     #links { display:flex; gap:16px; justify-content:center; }
@@ -180,7 +193,12 @@
 
   <button id="action-btn" disabled>CHECKING…</button>
 
-  <button id="open-app-btn" disabled>OPEN PHOBOS INTERFACE</button>
+  <button id="open-app-btn">OPEN PHOBOS INTERFACE</button>
+
+  <label id="auto-open-row">
+    <input type="checkbox" id="auto-open-check" />
+    <span id="auto-open-label">Auto-open interface on launch</span>
+  </label>
 
   <div id="footer">
     <div id="version-line">—</div>
@@ -213,6 +231,16 @@ const $sayonSb = document.getElementById('sayon-sub');
 const $serenSb = document.getElementById('seren-sub');
 const $launcherBanner = document.getElementById('launcher-update-banner');
 const $launcherLink   = document.getElementById('launcher-update-link');
+const $autoCheck      = document.getElementById('auto-open-check');
+
+// ─── Load persisted auto-open pref ──────────────────────────────────────────
+launcher.getPref('autoOpenApp').then(val => {
+  $autoCheck.checked = val === true || val === null; // default ON
+});
+
+$autoCheck.addEventListener('change', () => {
+  launcher.setPref('autoOpenApp', $autoCheck.checked);
+});
 
 const STATE_IMAGES = {
   checking:          'assets/ai-state-idle.png',
@@ -304,19 +332,19 @@ launcher.onLauncherUpdate((d) => {
 });
 
 launcher.onAppMissing(() => {
-  // App binary not found — disable the open button and show a hint
-  $openApp.disabled = true;
+  $openApp.disabled = false; // keep it clickable so user gets the error
   $openApp.textContent = 'APP NOT FOUND';
 });
 
-// Open app button — enabled only when core is running (app needs the backend)
+// Auto-open: fires once when core first reaches running state
+launcher.onFirstRunning(() => {
+  if ($autoCheck.checked) launcher.focusApp();
+});
+
+// Open app button — always enabled; single-instance lock handles focus vs fresh launch
 $openApp.onclick = () => launcher.focusApp();
 
 function updateButton() {
-  // Open Phobos Interface button — enabled only while core is running
-  $openApp.disabled = (currentState !== 'running');
-  $openApp.textContent = 'OPEN PHOBOS INTERFACE';
-
   $btn.disabled = false;
   $btn.className = '';
 

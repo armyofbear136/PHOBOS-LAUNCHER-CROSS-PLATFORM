@@ -13,6 +13,21 @@ let mainWindow = null;
 let coreProc   = null;
 let polling    = null;
 let appPid     = null;   // PID of the launched PHOBOS electron app (unmanaged)
+let _everRunning = false; // true after core reaches running state for the first time
+
+// ─── Prefs (simple JSON, stored in userData) ──────────────────────────────────
+function prefsPath() {
+  return path.join(app.getPath('userData'), 'launcher-prefs.json');
+}
+function loadPrefs() {
+  try { return JSON.parse(fs.readFileSync(prefsPath(), 'utf8')); } catch { return {}; }
+}
+function savePrefs(prefs) {
+  try {
+    fs.mkdirSync(path.dirname(prefsPath()), { recursive: true });
+    fs.writeFileSync(prefsPath(), JSON.stringify(prefs, null, 2), 'utf8');
+  } catch {}
+}
 
 const isDev = process.argv.includes('--dev');
 
@@ -49,6 +64,10 @@ ipcMain.handle('core:start',      () => startCore());
 ipcMain.handle('core:stop',       () => { stopCore(); send('status', { state: 'stopped', message: 'Stopped' }); });
 ipcMain.handle('core:checkUpdate',() => checkVersion());
 ipcMain.handle('core:download',   () => downloadAndInstall());
+
+// ─── Prefs ────────────────────────────────────────────────────────────────────
+ipcMain.handle('prefs:get', (_, key)        => loadPrefs()[key] ?? null);
+ipcMain.handle('prefs:set', (_, key, value) => { const p = loadPrefs(); p[key] = value; savePrefs(p); });
 
 // ─── PHOBOS app launch / focus ────────────────────────────────────────────────
 ipcMain.handle('app:launch', () => launchApp());
@@ -250,6 +269,7 @@ function stopCore() {
   if (!coreProc) return;
   try { coreProc.kill('SIGTERM'); } catch {}
   coreProc = null;
+  _everRunning = false;
   stopPolling();
 }
 
@@ -304,6 +324,12 @@ function startPolling() {
         coordinatorStatus: data.coordinator || 'disconnected',
         engineStatus: data.engine || 'disconnected',
       });
+
+      // Fire once so the renderer can trigger auto-open without polling state
+      if (!_everRunning) {
+        _everRunning = true;
+        send('core:first-running');
+      }
     } catch {
       // Still starting — phobos-core takes time to bind the port
       const elapsed = Date.now() - startedAt;
