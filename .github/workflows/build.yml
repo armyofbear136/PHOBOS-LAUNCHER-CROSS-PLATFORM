@@ -46,6 +46,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Sync version from version.txt
+        run: node scripts/sync-version.mjs
+
       - name: Build
         run: npm run ${{ matrix.cmd }}
         env:
@@ -113,6 +116,13 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
+      - uses: actions/checkout@v5
+
+      - name: Read version
+        id: ver
+        run: echo "version=$(cat version.txt | tr -d '[:space:]')" >> $GITHUB_OUTPUT
+        shell: bash
+
       - name: Download dist-all
         uses: actions/download-artifact@v7
         with:
@@ -124,7 +134,7 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name:               ${{ github.ref_name }}
-          name:                   PHOBOS Launcher ${{ github.ref_name }}
+          name:                   PHOBOS Launcher ${{ steps.ver.outputs.version }}
           draft:                  false
           prerelease:             false
           generate_release_notes: true

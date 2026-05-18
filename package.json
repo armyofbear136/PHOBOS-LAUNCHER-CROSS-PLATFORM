@@ -9,10 +9,10 @@
   "main": "main.js",
   "scripts": {
     "dev": "electron . --dev",
-    "build": "electron-builder --publish never",
-    "build:win": "electron-builder --win --publish never",
-    "build:mac": "electron-builder --mac --publish never",
-    "build:linux": "electron-builder --linux --publish never",
+    "build": "node scripts/sync-version.mjs && electron-builder --publish never",
+    "build:win": "node scripts/sync-version.mjs && electron-builder --win --publish never",
+    "build:mac": "node scripts/sync-version.mjs && electron-builder --mac --publish never",
+    "build:linux": "node scripts/sync-version.mjs && electron-builder --linux --publish never",
     "build:all": "node build.all.mjs"
   },
   "build": {
